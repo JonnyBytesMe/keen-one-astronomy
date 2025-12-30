@@ -1,0 +1,204 @@
+// =================================================================================================
+// OnStepX Configuration Template for Keen-One EQ Mount
+// =================================================================================================
+//
+// INSTRUCTIONS:
+// 1. Copy this file to your OnStepX installation as Config.h
+// 2. Fill in your WiFi credentials
+// 3. Adjust steps per degree for your specific gear ratios
+// 4. Compile and upload to FYSETC E4
+//
+// Hardware Configuration:
+// - Controller: FYSETC E4 (ESP32 + integrated TMC2209 drivers)
+// - Motors: 17HD4401D-PG27 (NEMA17 with 27:1 planetary gearbox)
+// - Harmonic Drive: 79:1 ratio
+// - Total Gear Ratio: 27 × 79 = 2133:1
+//
+// Steps Per Degree Calculation:
+// Formula: (motor_steps × microsteps × planetary × harmonic) / 360
+// Result: (200 × 32 × 27 × 79) / 360 = 37920 steps/degree
+//
+// MOTOR WIRING (non-standard for 17HD4401D-PG27!):
+// Coil A: Red + Green | Coil B: Blue + Black
+// JST connector order: [Red] [Green] [Blue] [Black]
+//
+// =================================================================================================
+
+#pragma once
+
+// =================================================================================================
+// WIFI SETTINGS - FILL IN YOUR CREDENTIALS
+// =================================================================================================
+#define STA_SSID "YOUR_WIFI_SSID"               // Your home WiFi name
+#define STA_PASSWORD "YOUR_WIFI_PASSWORD"       // Your home WiFi password
+#define STA_IP_ADDR 0,0,0,0                     // 0,0,0,0 = DHCP (recommended)
+#define STA_GW_ADDR 0,0,0,0
+#define STA_SN_MASK 0,0,0,0
+#define AP_SSID "OnStepX"                       // Fallback AP name
+#define AP_PASSWORD "password"                  // Fallback AP password
+#define AP_CHANNEL 7
+#define AP_IP_ADDR 192,168,4,1                  // AP IP (non-conflicting with router)
+#define AP_GW_ADDR 192,168,4,1
+#define AP_SN_MASK 255,255,255,0
+#define MDNS_SERVER OFF                         // OFF saves resources
+#define SERIAL_BT_MODE OFF                      // OFF saves resources
+
+// =================================================================================================
+// WEB SERVER - Disable to save resources (use INDI instead)
+// =================================================================================================
+#define WEB_SERVER OFF                          // OFF saves ~87KB flash
+
+// =================================================================================================
+// DEBUG OUTPUT - DISABLED for FYSETC E4
+// =================================================================================================
+#define DEBUG OFF
+#define DEBUG_ECHO_COMMANDS OFF
+#define SERIAL_DEBUG Serial
+#define SERIAL_DEBUG_BAUD 115200
+
+// =================================================================================================
+// FIRMWARE VERSION
+// =================================================================================================
+#define FileVersionConfig 6                     // Required for OnStepX 10.24
+
+// =================================================================================================
+// PINMAP
+// =================================================================================================
+#define PINMAP FYSETC_E4
+
+// =================================================================================================
+// SERIAL PORTS
+// =================================================================================================
+#define SERIAL_A_BAUD_DEFAULT 9600              // USB serial baud rate
+#define SERIAL_RADIO WIFI_STATION               // WiFi station mode
+
+// =================================================================================================
+// MOUNT TYPE
+// =================================================================================================
+#define MOUNT_TYPE GEM                          // German Equatorial Mount
+#define MOUNT_ENABLE_IN_STANDBY ON              // Keep motors powered
+#define MOUNT_COORDS TOPOCENTRIC                // Apply atmospheric refraction
+
+// =================================================================================================
+// TIME AND LOCATION SOURCE
+// =================================================================================================
+// Option 1: GPS (Adafruit Ultimate GPS on Serial2)
+#define TIME_LOCATION_SOURCE GPS
+#define SERIAL_GPS Serial2
+#define SERIAL_GPS_BAUD 9600
+#define SERIAL_GPS_RX 21                        // GPS TX → GPIO21
+#define SERIAL_GPS_TX 22                        // GPS RX → GPIO22
+#define LIMIT_STRICT OFF                        // Allow tracking before GPS fix
+
+// Option 2: No GPS (set manually via software)
+// #define TIME_LOCATION_SOURCE DS3231           // Or OFF for software-only
+
+// =================================================================================================
+// STATUS LED
+// =================================================================================================
+#define STATUS_LED ON
+#define STATUS_LED_PINS_DEFAULT ON
+
+// =================================================================================================
+// SLEWING BEHAVIOR
+// =================================================================================================
+#define SLEW_RATE_BASE_DESIRED 3.0              // Degrees per second
+#define SLEW_RATE_MEMORY OFF
+#define SLEW_ACCELERATION_DIST 5.0              // Degrees
+#define SLEW_RAPID_STOP_DIST 2.0                // Degrees
+
+// =================================================================================================
+// GUIDE RATE
+// =================================================================================================
+#define GUIDE_RATE_MAX_AXIS1 100                // Max 100x sidereal for RA
+#define GUIDE_RATE_MAX_AXIS2 100                // Max 100x sidereal for DEC
+#define GUIDE_TIME_LIMIT 0                      // No time limit
+
+// =================================================================================================
+// GOTO BEHAVIOR
+// =================================================================================================
+#define GOTO_FEATURE ON
+#define GOTO_OFFSET 0.25                        // Stop 0.25° before target
+
+// =================================================================================================
+// MERIDIAN LIMITS
+// =================================================================================================
+#define AXIS1_LIMIT_MIN -180
+#define AXIS1_LIMIT_MAX 180
+
+// =================================================================================================
+// AXIS1 (RA) CONFIGURATION - 17HD4401D-PG27 + 79:1 Harmonic Drive
+// =================================================================================================
+#define AXIS1_STEPS_PER_DEGREE 37920            // (200 × 32 × 27 × 79) / 360
+#define AXIS1_STEPS_PER_WORMROT 0               // No worm gear (harmonic drive)
+
+#define AXIS1_DRIVER_MODEL TMC2209
+#define AXIS1_DRIVER_MICROSTEPS 32
+#define AXIS1_DRIVER_MICROSTEPS_GOTO 16
+
+// Motor current (17HD4401D-PG27 rated at 1.3A)
+#define AXIS1_DRIVER_IHOLD 520                  // 40% of rated
+#define AXIS1_DRIVER_IRUN 1050                  // 80% of rated
+#define AXIS1_DRIVER_IGOTO 1050
+
+#define AXIS1_DRIVER_STATUS OFF                 // CRITICAL: TMC2209 uses UART, not SPI
+#define AXIS1_DRIVER_DECAY STEALTHCHOP          // Silent operation
+#define AXIS1_DRIVER_DECAY_GOTO SPREADCYCLE     // More torque for slewing
+
+#define AXIS1_POWER_DOWN OFF
+#define AXIS1_DRIVER_REVERSE OFF                // Change to ON if direction wrong
+
+#define AXIS1_SENSE_HOME OFF
+#define AXIS1_SENSE_LIMIT_MIN OFF
+#define AXIS1_SENSE_LIMIT_MAX OFF
+
+// =================================================================================================
+// AXIS2 (DEC) CONFIGURATION - Same as AXIS1
+// =================================================================================================
+#define AXIS2_STEPS_PER_DEGREE 37920
+
+#define AXIS2_DRIVER_MODEL TMC2209
+#define AXIS2_DRIVER_MICROSTEPS 32
+#define AXIS2_DRIVER_MICROSTEPS_GOTO 16
+
+#define AXIS2_DRIVER_IHOLD 520
+#define AXIS2_DRIVER_IRUN 1050
+#define AXIS2_DRIVER_IGOTO 1050
+
+#define AXIS2_DRIVER_STATUS OFF
+#define AXIS2_DRIVER_DECAY STEALTHCHOP
+#define AXIS2_DRIVER_DECAY_GOTO SPREADCYCLE
+
+#define AXIS2_POWER_DOWN OFF
+#define AXIS2_DRIVER_REVERSE OFF
+
+#define AXIS2_LIMIT_MIN -90
+#define AXIS2_LIMIT_MAX 90
+
+#define AXIS2_SENSE_HOME OFF
+#define AXIS2_SENSE_LIMIT_MIN OFF
+#define AXIS2_SENSE_LIMIT_MAX OFF
+
+// =================================================================================================
+// ADDITIONAL AXES (DISABLED)
+// =================================================================================================
+#define AXIS3_DRIVER_MODEL OFF                  // Rotator
+#define AXIS4_DRIVER_MODEL OFF                  // Focuser 1
+#define AXIS5_DRIVER_MODEL OFF                  // Focuser 2
+#define AXIS6_DRIVER_MODEL OFF                  // Focuser 3
+
+// =================================================================================================
+// AUXILIARY FEATURES (DISABLED)
+// =================================================================================================
+#define FEATURE1_PURPOSE OFF
+#define FEATURE2_PURPOSE OFF
+#define FEATURE3_PURPOSE OFF
+#define FEATURE4_PURPOSE OFF
+#define FEATURE5_PURPOSE OFF
+#define FEATURE6_PURPOSE OFF
+#define FEATURE7_PURPOSE OFF
+#define FEATURE8_PURPOSE OFF
+
+// =================================================================================================
+// END OF CONFIGURATION
+// =================================================================================================
