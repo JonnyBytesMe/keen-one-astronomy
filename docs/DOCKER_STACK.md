@@ -127,32 +127,16 @@ docker compose logs -f
 ```yaml
 services:
   indiserver:
-    image: indilib/indi-full:latest
+    image: silfreed/indilib:latest
     container_name: indiserver
     restart: unless-stopped
-    network_mode: host
-    privileged: true
-    command: >
-      indiserver -v indi_lx200_OnStep
-```
-
-### With Web Manager
-
-```yaml
-services:
-  indiserver:
-    image: indilib/indi-full:latest
-    network_mode: host
-    privileged: true
-    command: indiserver -v indi_lx200_OnStep
-
-  indi-web:
-    image: indilib/indi-web:latest
     ports:
-      - "8624:8624"
-    depends_on:
-      - indiserver
+      - "7624:7624"
+    # Entrypoint is 'indiserver', so just specify arguments
+    command: ["-v", "indi_lx200_OnStep"]
 ```
+
+**Note:** The `silfreed/indilib` image includes INDI Library 1.9.8 with the `indi_lx200_OnStep` driver and many other drivers. The entrypoint is already `indiserver`, so the command only needs the driver arguments.
 
 ### Available INDI Drivers
 

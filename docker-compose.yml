@@ -2,9 +2,8 @@
 # Docker Compose for INDI Server and Astronomy Tools
 #
 # This stack provides:
-# - INDI Server for telescope control
-# - INDI Web Manager for browser-based driver management
-# - Astrometry.net for plate solving (optional)
+# - INDI Server for telescope control (with OnStep LX200 driver)
+# - Connects to OnStepX mount via TCP/IP
 #
 # Usage:
 #   docker compose up -d
@@ -13,60 +12,37 @@
 #   Host: localhost (or your Docker host IP)
 #   Port: 7624 (INDI protocol)
 #
-# Web Interface:
-#   http://localhost:8624 (INDI Web Manager)
+# Mount Connection:
+#   Configure in INDI client: TCP connection to ${ONSTEP_IP}:${ONSTEP_PORT}
 
 services:
   # ==========================================================================
-  # INDI Server - Core telescope control
+  # INDI Server - Core telescope control with OnStep driver
   # ==========================================================================
   indiserver:
-    image: indilib/indi-full:latest
+    image: silfreed/indilib:latest
     container_name: indiserver
     restart: unless-stopped
-    network_mode: host  # Required for USB device passthrough and multicast
-    privileged: true    # Required for serial/USB device access
+    ports:
+      - "7624:7624"
     environment:
       - TZ=${TIMEZONE:-Europe/London}
     volumes:
       - ./indi/config:/root/.indi
-      - /dev:/dev  # Pass through all devices for USB/serial access
-    command: >
-      indiserver -v
-      indi_lx200_OnStep
-    # Add more drivers as needed:
-    # indi_asi_ccd        - ZWO cameras
-    # indi_qhy_ccd        - QHY cameras
-    # indi_gpsd           - GPS
-    # indi_eqmod_telescope - EQMod mounts
+    # Start INDI server with OnStep LX200 driver
+    # The driver connects to the mount via TCP (configured in INDI client)
+    command: ["-v", "indi_lx200_OnStep"]
+    # Additional drivers available in this image:
+    # indi_lx200basic, indi_lx200generic, indi_simulator_telescope
+    # indi_asi_ccd, indi_qhy_ccd (for cameras)
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-
-  # ==========================================================================
-  # INDI Web Manager - Browser-based driver management
-  # ==========================================================================
-  indi-web:
-    image: indilib/indi-web:latest
-    container_name: indi-web
-    restart: unless-stopped
-    ports:
-      - "8624:8624"
-    environment:
-      - TZ=${TIMEZONE:-Europe/London}
-      - INDI_HOST=host.docker.internal  # Connect to indiserver on host network
-      - INDI_PORT=7624
-    volumes:
-      - ./indi/web-config:/root/.indi
-    depends_on:
-      - indiserver
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      # Traefik labels (uncomment if using Traefik reverse proxy)
-      # - "traefik.enable=true"
-      # - "traefik.http.routers.indi-web.rule=Host(`astronomy.example.com`)"
-      # - "traefik.http.routers.indi-web.entrypoints=https"
-      # - "traefik.http.routers.indi-web.tls=true"
-      # - "traefik.http.services.indi-web.loadbalancer.server.port=8624"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7624"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # ==========================================================================
   # Astrometry.net - Local plate solving (optional, large download)
