@@ -183,11 +183,38 @@ This project is open source. See individual components for their licenses:
 
 ## Acknowledgments
 
-- [Howard Dutton](https://github.com/hjd1964) - OnStepX creator
-- [OnStep Groups.io Community](https://onstep.groups.io/g/main)
-- [Luke @ astrophoto.lionbit.com](https://astrophoto.lionbit.com) - Keen-One EQ resources
-- [Printables Community](https://www.printables.com) - 79:1 Harmonic Drive design
+This project is built upon the incredible work of the open-source astronomy community:
+
+### Core Projects
+- **[OnStepX](https://github.com/hjd1964/OnStepX)** by Howard Dutton - The telescope firmware that makes everything work
+- **[INDI Library](https://indilib.org)** - Cross-platform astronomy device control
+- **[Keen-One EQ Mount](https://astrophoto.lionbit.com)** by Luke - The mount design this project is built for
+
+### Hardware & 3D Printing
+- **[79:1 Harmonic Drive](https://www.printables.com/model/309144)** by cncferdi - Precision gear reduction
+- **[FYSETC E4](https://github.com/FYSETC/FYSETC-E4)** - Open hardware controller board
+
+### Docker Images
+- **[silfreed/indilib](https://hub.docker.com/r/silfreed/indilib)** - INDI server container
+- **[nicolaka/netshoot](https://github.com/nicolaka/netshoot)** - Network troubleshooting tools
+
+### Communities
+- **[OnStep Groups.io](https://onstep.groups.io/g/main)** - Invaluable troubleshooting and advice
+- **[INDI Forum](https://indilib.org/forum/)** - Driver and configuration support
+- **[Printables Community](https://www.printables.com)** - 3D printing expertise
+
+**See [CREDITS.md](CREDITS.md) for a complete list of all projects, tools, and contributors.**
 
 ---
 
-**Happy Stargazing!**
+## Support This Project
+
+If this project helped you:
+- Give it a star on GitHub
+- Share your build in the Discussions
+- Contribute improvements via Pull Requests
+- Help others in the OnStep community
+
+---
+
+**Clear Skies!**
