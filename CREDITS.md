@@ -80,6 +80,13 @@ This project stands on the shoulders of giants. We gratefully acknowledge the fo
 - **Description:** Network troubleshooting container with various networking tools
 - **Used for:** Testing TCP connections to mount and INDI server
 
+### Portainer
+- **Website:** [portainer.io](https://www.portainer.io)
+- **Repository:** [github.com/portainer/portainer](https://github.com/portainer/portainer)
+- **License:** Zlib
+- **Description:** Container management platform with web UI
+- **Used for:** Managing and deploying the INDI Docker stack
+
 ---
 
 ## Development Tools
