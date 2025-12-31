@@ -129,7 +129,8 @@ fi
 if [ "$USE_GPS_LOCATION" = "true" ] && [ "$INDI_READY" = true ]; then
     log_info "Querying GPS location from mount..."
 
-    GPS_DATA=$(echo '<getProperties version="1.7"/>' | nc -w 5 "$INDI_HOST" "$INDI_PORT" 2>/dev/null | grep -A20 "GEOGRAPHIC_COORD" || true)
+    # Use timeout to prevent hanging if INDI streams data indefinitely
+    GPS_DATA=$(timeout 10 bash -c 'echo "<getProperties version=\"1.7\"/>" | nc -w 5 '"$INDI_HOST"' '"$INDI_PORT"' 2>/dev/null | head -500 | grep -A20 "GEOGRAPHIC_COORD"' 2>/dev/null || true)
 
     if [ -n "$GPS_DATA" ]; then
         # Extract latitude
