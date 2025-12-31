@@ -1,30 +1,33 @@
+# ============================================================================
 # Keen-One Astronomy Stack
 # Docker Compose for INDI Server and Astronomy Tools
+# ============================================================================
 #
 # This stack provides:
 # - INDI Server for telescope control (with OnStep LX200 driver)
-# - KStars/Ekos desktop accessible via web browser (port 3000)
-# - Connects to OnStepX mount via TCP/IP
+# - Web-accessible Linux desktop with KStars/Ekos and Stellarium
+# - Auto-configuration of telescope control in both applications
+# - Self-test diagnostics for troubleshooting
 #
-# Usage:
-#   docker compose up -d
+# Quick Start:
+#   1. Copy .env.example to .env and configure your settings
+#   2. Run: docker compose up -d
+#   3. Open: http://localhost:3000 (or https://localhost:3001)
 #
-# Access KStars:
-#   Open http://localhost:3000 in your browser
-#   Username: abc (or set via ABC_USER env var)
-#   Password: none by default
+# For Portainer:
+#   - Paste this file into Portainer's stack editor
+#   - Configure environment variables in Portainer's UI
+#   - Deploy the stack
 #
-# INDI Server:
-#   Port: 7624 (INDI protocol)
-#
-# Mount Connection:
-#   KStars connects to INDI at localhost:7624 (inside container network)
-#   INDI driver connects to OnStepX mount at ${ONSTEP_IP}:${ONSTEP_PORT}
+# ============================================================================
 
 services:
   # ==========================================================================
   # INDI Server - Core telescope control with OnStep driver
   # ==========================================================================
+  # Runs the INDI protocol server with LX200 OnStep driver
+  # Other containers connect to this for telescope control
+  #
   indiserver:
     image: silfreed/indilib:latest
     container_name: indiserver
@@ -34,7 +37,7 @@ services:
     environment:
       - TZ=${TIMEZONE:-Europe/London}
     volumes:
-      - ./indi/config:/root/.indi
+      - indi-config:/root/.indi
     # Start INDI server with OnStep LX200 driver
     # The driver connects to the mount via TCP (configured in INDI client)
     command: ["-v", "indi_lx200_OnStep"]
@@ -44,17 +47,19 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "7624"]
+      test: ["CMD-SHELL", "echo '<getProperties version=\"1.7\"/>' | timeout 5 cat > /dev/tcp/localhost/7624 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+    networks:
+      - astronomy
 
   # ==========================================================================
   # Astronomy Desktop - KStars + Stellarium accessible via web browser
   # ==========================================================================
   # Provides full Linux desktop with pre-configured astronomy software
-  # Access at http://localhost:3000
+  # Access at http://localhost:3000 or https://localhost:3001
   #
   # Included software:
   # - KStars/Ekos: Full astrophotography suite with INDI support
@@ -68,6 +73,7 @@ services:
     security_opt:
       - seccomp:unconfined
     environment:
+      # LinuxServer.io base settings
       - PUID=1000
       - PGID=1000
       - TZ=${TIMEZONE:-Europe/London}
@@ -75,27 +81,55 @@ services:
       - TITLE=Astronomy Desktop
       # Install astronomy software on startup
       - DOCKER_MODS=linuxserver/mods:universal-package-install
-      - INSTALL_PACKAGES=kstars stellarium indi-bin
+      - INSTALL_PACKAGES=kstars stellarium indi-bin netcat-openbsd bc
+      # =======================================================================
+      # Astronomy Stack Configuration
+      # =======================================================================
+      # Logging: 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+      - LOG_LEVEL=${LOG_LEVEL:-3}
+      # INDI Server (usually leave as default for Docker networking)
+      - INDI_HOST=${INDI_HOST:-indiserver}
+      - INDI_PORT=${INDI_PORT:-7624}
+      # Mount connection (leave MOUNT_IP blank for auto-discovery)
+      - MOUNT_IP=${MOUNT_IP:-}
+      - MOUNT_PORT=${MOUNT_PORT:-9999}
+      - MOUNT_DRIVER=${MOUNT_DRIVER:-LX200 OnStep}
+      # Location (leave blank to use GPS from mount)
+      - USE_GPS_LOCATION=${USE_GPS_LOCATION:-true}
+      - LATITUDE=${LATITUDE:-}
+      - LONGITUDE=${LONGITUDE:-}
+      - ELEVATION=${ELEVATION:-}
+      # Self-test settings
+      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-true}
+      - SELF_TEST_ON_RESTART=${SELF_TEST_ON_RESTART:-false}
     volumes:
       - astronomy-desktop-config:/config
-      # Pre-configured settings (copied on first boot via custom-cont-init.d)
-      - ./config/stellarium:/defaults/stellarium:ro
-      - ./config/kstars:/defaults/kstars:ro
-      # Only mount init scripts (test scripts are in scripts/test/)
+      # Mount scripts directories
       - ./scripts/init:/custom-cont-init.d:ro
+      - ./scripts/test:/scripts:ro
     ports:
       - "3000:3000"   # Web desktop (HTTP)
       - "3001:3001"   # Web desktop (HTTPS)
     shm_size: "1gb"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD", "bash", "/scripts/health-check.sh"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
     depends_on:
-      - indiserver
+      indiserver:
+        condition: service_healthy
+    networks:
+      - astronomy
 
   # ==========================================================================
-  # Astrometry.net - Local plate solving (optional, large download)
+  # Astrometry.net - Local plate solving (optional)
   # ==========================================================================
   # Uncomment to enable plate solving. First run downloads ~2GB of index files.
+  # Access at http://localhost:8090
   #
   # astrometry:
   #   image: dm90/astrometry:latest
@@ -109,13 +143,24 @@ services:
   #     - astrometry-data:/data
   #   labels:
   #     - "com.centurylinklabs.watchtower.enable=true"
+  #   networks:
+  #     - astronomy
 
+# ============================================================================
+# Volumes
+# ============================================================================
 volumes:
   astronomy-desktop-config:
     name: astronomy-desktop-config
+  indi-config:
+    name: astronomy-indi-config
   astrometry-data:
     name: astronomy-astrometry-data
 
+# ============================================================================
+# Networks
+# ============================================================================
 networks:
-  default:
+  astronomy:
     name: astronomy
+    driver: bridge

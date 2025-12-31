@@ -1,0 +1,143 @@
+# ============================================================================
+# Keen-One Astronomy Stack - Portainer Edition
+# ============================================================================
+# Self-contained Docker Compose for Portainer deployment
+#
+# INSTRUCTIONS:
+#   1. Copy this entire file into Portainer's Stack editor
+#   2. Configure environment variables below (or in Portainer's UI)
+#   3. Deploy the stack
+#   4. Access at https://your-server:3001
+#
+# NO LOCAL FILES REQUIRED - scripts are downloaded from GitHub automatically
+# ============================================================================
+
+x-common-env: &common-env
+  TIMEZONE: ${TIMEZONE:-Europe/London}
+
+services:
+  # ==========================================================================
+  # INDI Server - Telescope Control
+  # ==========================================================================
+  indiserver:
+    image: silfreed/indilib:latest
+    container_name: indiserver
+    restart: unless-stopped
+    ports:
+      - "7624:7624"
+    environment:
+      - TZ=${TIMEZONE:-Europe/London}
+    volumes:
+      - indi-config:/root/.indi
+    command: ["-v", "indi_lx200_OnStep"]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "echo '<getProperties version=\"1.7\"/>' | timeout 5 cat > /dev/tcp/localhost/7624 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - astronomy
+
+  # ==========================================================================
+  # Astronomy Desktop - Web-accessible KStars + Stellarium
+  # ==========================================================================
+  astronomy-desktop:
+    image: linuxserver/webtop:ubuntu-kde
+    container_name: astronomy-desktop
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      # LinuxServer.io base settings
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-Europe/London}
+      - SUBFOLDER=/
+      - TITLE=Astronomy Desktop
+      # Install astronomy software and download init scripts
+      - DOCKER_MODS=linuxserver/mods:universal-package-install
+      - INSTALL_PACKAGES=kstars stellarium indi-bin netcat-openbsd bc curl
+      # =====================================================================
+      # Astronomy Stack Configuration
+      # =====================================================================
+      # Logging: 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+      - LOG_LEVEL=${LOG_LEVEL:-2}
+      # INDI Server (usually leave as default)
+      - INDI_HOST=${INDI_HOST:-indiserver}
+      - INDI_PORT=${INDI_PORT:-7624}
+      # Mount IP (leave blank for auto-discovery, or set to your mount's IP)
+      - MOUNT_IP=${MOUNT_IP:-}
+      - MOUNT_PORT=${MOUNT_PORT:-9999}
+      - MOUNT_DRIVER=${MOUNT_DRIVER:-LX200 OnStep}
+      # Location (leave blank to use GPS from mount)
+      - USE_GPS_LOCATION=${USE_GPS_LOCATION:-true}
+      - LATITUDE=${LATITUDE:-}
+      - LONGITUDE=${LONGITUDE:-}
+      - ELEVATION=${ELEVATION:-100}
+      # Self-test settings
+      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-true}
+      # GitHub repo for scripts (change to your fork if needed)
+      - SCRIPT_REPO=${SCRIPT_REPO:-JonnyBytesMe/keen-one-astronomy}
+      - SCRIPT_BRANCH=${SCRIPT_BRANCH:-main}
+    volumes:
+      - astronomy-desktop-config:/config
+    ports:
+      - "3000:3000"   # Web desktop (HTTP)
+      - "3001:3001"   # Web desktop (HTTPS)
+    shm_size: "1gb"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 180s
+    depends_on:
+      indiserver:
+        condition: service_healthy
+    networks:
+      - astronomy
+    # Download and run init scripts from GitHub
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        # Download init scripts from GitHub
+        REPO="${SCRIPT_REPO:-JonnyBytesMe/keen-one-astronomy}"
+        BRANCH="${SCRIPT_BRANCH:-main}"
+        BASE_URL="https://raw.githubusercontent.com/$${REPO}/$${BRANCH}/scripts"
+
+        echo "=== Keen-One Astronomy Stack - Portainer Bootstrap ==="
+        echo "Downloading scripts from: $${BASE_URL}"
+
+        # Create script directories
+        mkdir -p /custom-cont-init.d /scripts
+
+        # Download init scripts
+        curl -fsSL "$${BASE_URL}/init/init-astronomy.sh" -o /custom-cont-init.d/init-astronomy.sh
+        curl -fsSL "$${BASE_URL}/init/discover-mount.sh" -o /custom-cont-init.d/discover-mount.sh
+        chmod +x /custom-cont-init.d/*.sh
+
+        # Download test scripts
+        curl -fsSL "$${BASE_URL}/test/self-test.sh" -o /scripts/self-test.sh
+        curl -fsSL "$${BASE_URL}/test/health-check.sh" -o /scripts/health-check.sh
+        chmod +x /scripts/*.sh
+
+        echo "Scripts downloaded successfully"
+
+        # Run the original entrypoint
+        exec /init
+
+volumes:
+  astronomy-desktop-config:
+    name: astronomy-desktop-config
+  indi-config:
+    name: astronomy-indi-config
+
+networks:
+  astronomy:
+    name: astronomy
+    driver: bridge
