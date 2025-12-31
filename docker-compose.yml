@@ -3,17 +3,23 @@
 #
 # This stack provides:
 # - INDI Server for telescope control (with OnStep LX200 driver)
+# - KStars/Ekos desktop accessible via web browser (port 3000)
 # - Connects to OnStepX mount via TCP/IP
 #
 # Usage:
 #   docker compose up -d
 #
-# Connect from Stellarium/KStars:
-#   Host: localhost (or your Docker host IP)
+# Access KStars:
+#   Open http://localhost:3000 in your browser
+#   Username: abc (or set via ABC_USER env var)
+#   Password: none by default
+#
+# INDI Server:
 #   Port: 7624 (INDI protocol)
 #
 # Mount Connection:
-#   Configure in INDI client: TCP connection to ${ONSTEP_IP}:${ONSTEP_PORT}
+#   KStars connects to INDI at localhost:7624 (inside container network)
+#   INDI driver connects to OnStepX mount at ${ONSTEP_IP}:${ONSTEP_PORT}
 
 services:
   # ==========================================================================
@@ -45,6 +51,48 @@ services:
       start_period: 10s
 
   # ==========================================================================
+  # Astronomy Desktop - KStars + Stellarium accessible via web browser
+  # ==========================================================================
+  # Provides full Linux desktop with pre-configured astronomy software
+  # Access at http://localhost:3000
+  #
+  # Included software:
+  # - KStars/Ekos: Full astrophotography suite with INDI support
+  # - Stellarium: Planetarium with telescope control
+  # - INDI tools: Command-line INDI utilities
+  #
+  astronomy-desktop:
+    image: linuxserver/webtop:ubuntu-kde
+    container_name: astronomy-desktop
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-Europe/London}
+      - SUBFOLDER=/
+      - TITLE=Astronomy Desktop
+      # Install astronomy software on startup
+      - DOCKER_MODS=linuxserver/mods:universal-package-install
+      - INSTALL_PACKAGES=kstars stellarium indi-bin
+    volumes:
+      - astronomy-desktop-config:/config
+      # Pre-configured settings (copied on first boot via custom-cont-init.d)
+      - ./config/stellarium:/defaults/stellarium:ro
+      - ./config/kstars:/defaults/kstars:ro
+      # Only mount init scripts (test scripts are in scripts/test/)
+      - ./scripts/init:/custom-cont-init.d:ro
+    ports:
+      - "3000:3000"   # Web desktop (HTTP)
+      - "3001:3001"   # Web desktop (HTTPS)
+    shm_size: "1gb"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      - indiserver
+
+  # ==========================================================================
   # Astrometry.net - Local plate solving (optional, large download)
   # ==========================================================================
   # Uncomment to enable plate solving. First run downloads ~2GB of index files.
@@ -63,6 +111,8 @@ services:
   #     - "com.centurylinklabs.watchtower.enable=true"
 
 volumes:
+  astronomy-desktop-config:
+    name: astronomy-desktop-config
   astrometry-data:
     name: astronomy-astrometry-data
 

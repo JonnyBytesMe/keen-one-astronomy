@@ -87,30 +87,104 @@ docker compose logs -f
    - Configure connection: TCP, your mount IP, port 9999
 4. Click "Start" to launch INDI server with selected profile
 
+## Web Desktop (Astronomy Desktop)
+
+The stack includes a full Linux desktop accessible via web browser with pre-installed astronomy software.
+
+### Accessing the Desktop
+
+1. Open http://localhost:3000 in your browser
+2. For HTTPS: https://localhost:3001 (self-signed certificate)
+
+**Note:** Modern browsers may require HTTPS for full functionality. Accept the self-signed certificate when prompted.
+
+### Pre-Installed Software
+
+- **KStars/Ekos** - Full astrophotography suite
+- **Stellarium** - Planetarium with telescope control
+- **INDI Tools** - Command-line utilities
+
+## Connecting to Your Mount
+
+### First Time Setup (INDI Connection)
+
+Before using Stellarium or KStars, configure INDI to connect to your mount:
+
+1. Open KStars from the desktop
+2. Go to **Tools → Ekos**
+3. Click **INDI Control Panel** button
+4. Find **LX200 OnStep** device
+5. In **Connection** tab:
+   - Set **Address** to your mount IP (e.g., `192.168.0.86`)
+   - Set **Port** to `9999`
+6. Click **Connect**
+
+Once connected, the mount is accessible from both Stellarium and KStars.
+
 ## Connecting from Desktop Software
 
-### Stellarium
+### Stellarium (via Web Desktop)
 
-1. Open Stellarium
-2. Press F2 → Plugins → Telescope Control
-3. Click "Configure telescopes"
-4. Add new telescope:
-   - **Type:** INDI
-   - **Host:** localhost (or Docker host IP)
-   - **Port:** 7624
-5. Click Connect
-6. Click any object → "Slew telescope to object"
+The telescope configuration is pre-created. To use:
 
-### KStars/Ekos
+1. Launch Stellarium from the desktop
+2. Press **Ctrl+0** to open Telescope Control window
+3. Your mount "Keen-One EQ Mount" should show as connected
+4. To slew: Click any star, then press **Ctrl+1**
 
-1. Open KStars
-2. Tools → Ekos
-3. Create new profile
-4. Set INDI Server:
-   - **Host:** localhost
-   - **Port:** 7624
-5. Add equipment (Mount: LX200 OnStep)
-6. Click Start
+**Manual Configuration** (if needed):
+
+Config file: `/config/.stellarium/modules/TelescopeControl/telescopes.json`
+
+```json
+{
+    "version": "0.4.1",
+    "1": {
+        "name": "Keen-One EQ Mount",
+        "connection": "INDI",
+        "equinox": "JNow",
+        "host_name": "indiserver",
+        "tcp_port": 7624,
+        "device_model": "LX200 OnStep",
+        "delay": 500000,
+        "connect_at_startup": true,
+        "circles": [0.5, 1.0]
+    }
+}
+```
+
+**Important Notes:**
+- `version` must be `"0.4.1"` for Stellarium 24.4+
+- Telescope slot must be `"1"` (not `"0"`)
+- `host_name` is `indiserver` (Docker container name)
+
+### KStars/Ekos (via Web Desktop)
+
+The Ekos profile is pre-configured. To use:
+
+1. Launch KStars from the desktop
+2. Go to **Tools → Ekos**
+3. Select profile "**Keen-One EQ**"
+4. Click **Start** to connect
+5. Use the **Mount** module to control the telescope
+
+**Profile Location:** `/config/.local/share/kstars/ekos_profiles.xml`
+
+```xml
+<profile id="keen-one" name="Keen-One EQ">
+  <auto_connect>1</auto_connect>
+  <mode>1</mode>
+  <remote_indi_host>indiserver</remote_indi_host>
+  <remote_indi_port>7624</remote_indi_port>
+  <drivers>
+    <mount>LX200 OnStep</mount>
+  </drivers>
+</profile>
+```
+
+**Key Settings:**
+- `mode=1` means Remote INDI server
+- `remote_indi_host` is `indiserver` (Docker network name)
 
 ### NINA (Windows)
 
@@ -119,6 +193,60 @@ docker compose logs -f
 3. Select "ASCOM Telescope"
 4. Choose "OnStep" from ASCOM selector
 5. Configure connection to your mount IP
+
+## INDI Protocol Commands
+
+You can control the telescope directly via INDI commands from the command line.
+
+### Test INDI Connection
+
+```bash
+# From host machine
+echo '<getProperties version="1.7"/>' | nc -w 3 localhost 7624 | head -30
+
+# From inside astronomy-desktop container
+docker exec astronomy-desktop sh -c "echo '<getProperties version=\"1.7\"/>' | nc -w 3 indiserver 7624 | head -30"
+```
+
+### Get Current Coordinates
+
+```bash
+echo '<getProperties version="1.7"/>' | nc localhost 7624 | grep -A5 EQUATORIAL_EOD_COORD
+```
+
+### Slew to Coordinates
+
+```bash
+# RA in decimal hours (0-24), DEC in decimal degrees (-90 to 90)
+echo '<newNumberVector device="LX200 OnStep" name="EQUATORIAL_EOD_COORD">
+  <oneNumber name="RA">6.75</oneNumber>
+  <oneNumber name="DEC">-16.72</oneNumber>
+</newNumberVector>' | nc localhost 7624
+```
+
+### Common Star Coordinates
+
+| Star | RA (hours) | DEC (degrees) |
+|------|-----------|---------------|
+| Sirius | 6.75 | -16.72 |
+| Vega | 18.62 | +38.78 |
+| Polaris | 2.53 | +89.26 |
+| Betelgeuse | 5.92 | +7.41 |
+| Rigel | 5.24 | -8.20 |
+
+### Abort Slew
+
+```bash
+echo '<newSwitchVector device="LX200 OnStep" name="TELESCOPE_ABORT_MOTION">
+  <oneSwitch name="ABORT">On</oneSwitch>
+</newSwitchVector>' | nc localhost 7624
+```
+
+### Check Mount Connection Status
+
+```bash
+echo '<getProperties version="1.7"/>' | nc localhost 7624 | grep -A3 'name="CONNECTION"'
+```
 
 ## Docker Compose Configuration
 
