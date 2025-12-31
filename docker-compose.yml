@@ -6,18 +6,16 @@
 # This stack provides:
 # - INDI Server for telescope control (with OnStep LX200 driver)
 # - Web-accessible Linux desktop with KStars/Ekos and Stellarium
+# - ASTAP plate solving with D50 star catalog (2-8 second solves)
 # - Auto-configuration of telescope control in both applications
-# - Self-test diagnostics for troubleshooting
 #
 # Quick Start:
 #   1. Copy .env.example to .env and configure your settings
 #   2. Run: docker compose up -d
 #   3. Open: http://localhost:3000 (or https://localhost:3001)
 #
-# For Portainer:
-#   - Paste this file into Portainer's stack editor
-#   - Configure environment variables in Portainer's UI
-#   - Deploy the stack
+# For local development with script changes:
+#   Use docker-compose.dev.yml which mounts local scripts
 #
 # ============================================================================
 
@@ -25,9 +23,6 @@ services:
   # ==========================================================================
   # INDI Server - Core telescope control with OnStep driver
   # ==========================================================================
-  # Runs the INDI protocol server with LX200 OnStep driver
-  # Other containers connect to this for telescope control
-  #
   indiserver:
     image: silfreed/indilib:latest
     container_name: indiserver
@@ -38,12 +33,7 @@ services:
       - TZ=${TIMEZONE:-Europe/London}
     volumes:
       - indi-config:/root/.indi
-    # Start INDI server with OnStep LX200 driver
-    # The driver connects to the mount via TCP (configured in INDI client)
     command: ["-v", "indi_lx200_OnStep"]
-    # Additional drivers available in this image:
-    # indi_lx200basic, indi_lx200generic, indi_simulator_telescope
-    # indi_asi_ccd, indi_qhy_ccd (for cameras)
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
@@ -56,18 +46,16 @@ services:
       - astronomy
 
   # ==========================================================================
-  # Astronomy Desktop - KStars + Stellarium accessible via web browser
+  # Astronomy Desktop - Pre-built image with all software included
   # ==========================================================================
-  # Provides full Linux desktop with pre-configured astronomy software
-  # Access at http://localhost:3000 or https://localhost:3001
-  #
-  # Included software:
+  # Custom image includes:
   # - KStars/Ekos: Full astrophotography suite with INDI support
   # - Stellarium: Planetarium with telescope control
-  # - INDI tools: Command-line INDI utilities
+  # - ASTAP: Fast plate solving with D50 star catalog
+  # - INDI tools: Command-line utilities
   #
   astronomy-desktop:
-    image: linuxserver/webtop:ubuntu-kde
+    image: ghcr.io/jonnybytesme/keen-one-astronomy:latest
     container_name: astronomy-desktop
     restart: unless-stopped
     security_opt:
@@ -79,14 +67,11 @@ services:
       - TZ=${TIMEZONE:-Europe/London}
       - SUBFOLDER=/
       - TITLE=Astronomy Desktop
-      # Install astronomy software on startup
-      - DOCKER_MODS=linuxserver/mods:universal-package-install
-      - INSTALL_PACKAGES=kstars stellarium indi-bin netcat-openbsd bc
-      # =======================================================================
+      # =====================================================================
       # Astronomy Stack Configuration
-      # =======================================================================
+      # =====================================================================
       # Logging: 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
-      - LOG_LEVEL=${LOG_LEVEL:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-2}
       # INDI Server (usually leave as default for Docker networking)
       - INDI_HOST=${INDI_HOST:-indiserver}
       - INDI_PORT=${INDI_PORT:-7624}
@@ -100,13 +85,16 @@ services:
       - LONGITUDE=${LONGITUDE:-}
       - ELEVATION=${ELEVATION:-}
       # Self-test settings
-      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-true}
+      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-false}
       - SELF_TEST_ON_RESTART=${SELF_TEST_ON_RESTART:-false}
+      # =====================================================================
+      # Multi-Client Sharing (Selkies-GStreamer)
+      # =====================================================================
+      - SELKIES_ENABLE_SHARING=true
+      - SELKIES_ENABLE_COLLAB=true
     volumes:
+      # Persistent config (user settings, KStars profiles, etc.)
       - astronomy-desktop-config:/config
-      # Mount scripts directories
-      - ./scripts/init:/custom-cont-init.d:ro
-      - ./scripts/test:/scripts:ro
     ports:
       - "3000:3000"   # Web desktop (HTTP)
       - "3001:3001"   # Web desktop (HTTPS)
@@ -125,27 +113,6 @@ services:
     networks:
       - astronomy
 
-  # ==========================================================================
-  # Astrometry.net - Local plate solving (optional)
-  # ==========================================================================
-  # Uncomment to enable plate solving. First run downloads ~2GB of index files.
-  # Access at http://localhost:8090
-  #
-  # astrometry:
-  #   image: dm90/astrometry:latest
-  #   container_name: astrometry
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8090:8090"
-  #   environment:
-  #     - TZ=${TIMEZONE:-Europe/London}
-  #   volumes:
-  #     - astrometry-data:/data
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #   networks:
-  #     - astronomy
-
 # ============================================================================
 # Volumes
 # ============================================================================
@@ -154,8 +121,6 @@ volumes:
     name: astronomy-desktop-config
   indi-config:
     name: astronomy-indi-config
-  astrometry-data:
-    name: astronomy-astrometry-data
 
 # ============================================================================
 # Networks

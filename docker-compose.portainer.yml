@@ -5,15 +5,12 @@
 #
 # INSTRUCTIONS:
 #   1. Copy this entire file into Portainer's Stack editor
-#   2. Configure environment variables below (or in Portainer's UI)
+#   2. Configure environment variables in Portainer's UI
 #   3. Deploy the stack
 #   4. Access at https://your-server:3001
 #
-# NO LOCAL FILES REQUIRED - scripts are downloaded from GitHub automatically
+# Pre-built image includes all software - no downloads on startup!
 # ============================================================================
-
-x-common-env: &common-env
-  TIMEZONE: ${TIMEZONE:-Europe/London}
 
 services:
   # ==========================================================================
@@ -42,10 +39,12 @@ services:
       - astronomy
 
   # ==========================================================================
-  # Astronomy Desktop - Web-accessible KStars + Stellarium
+  # Astronomy Desktop - Pre-built image with all software
   # ==========================================================================
+  # Includes: KStars, Stellarium, ASTAP (with D50 catalog), INDI tools
+  #
   astronomy-desktop:
-    image: linuxserver/webtop:ubuntu-kde
+    image: ghcr.io/jonnybytesme/keen-one-astronomy:latest
     container_name: astronomy-desktop
     restart: unless-stopped
     security_opt:
@@ -57,9 +56,6 @@ services:
       - TZ=${TIMEZONE:-Europe/London}
       - SUBFOLDER=/
       - TITLE=Astronomy Desktop
-      # Install astronomy software and download init scripts
-      - DOCKER_MODS=linuxserver/mods:universal-package-install
-      - INSTALL_PACKAGES=kstars stellarium indi-bin netcat-openbsd bc curl
       # =====================================================================
       # Astronomy Stack Configuration
       # =====================================================================
@@ -76,12 +72,14 @@ services:
       - USE_GPS_LOCATION=${USE_GPS_LOCATION:-true}
       - LATITUDE=${LATITUDE:-}
       - LONGITUDE=${LONGITUDE:-}
-      - ELEVATION=${ELEVATION:-100}
+      - ELEVATION=${ELEVATION:-}
       # Self-test settings
-      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-true}
-      # GitHub repo for scripts (change to your fork if needed)
-      - SCRIPT_REPO=${SCRIPT_REPO:-JonnyBytesMe/keen-one-astronomy}
-      - SCRIPT_BRANCH=${SCRIPT_BRANCH:-main}
+      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-false}
+      # =====================================================================
+      # Multi-Client Sharing (Selkies-GStreamer)
+      # =====================================================================
+      - SELKIES_ENABLE_SHARING=true
+      - SELKIES_ENABLE_COLLAB=true
     volumes:
       - astronomy-desktop-config:/config
     ports:
@@ -95,41 +93,12 @@ services:
       interval: 60s
       timeout: 15s
       retries: 3
-      start_period: 180s
+      start_period: 120s
     depends_on:
       indiserver:
         condition: service_healthy
     networks:
       - astronomy
-    # Download and run init scripts from GitHub
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        # Download init scripts from GitHub
-        REPO="${SCRIPT_REPO:-JonnyBytesMe/keen-one-astronomy}"
-        BRANCH="${SCRIPT_BRANCH:-main}"
-        BASE_URL="https://raw.githubusercontent.com/$${REPO}/$${BRANCH}/scripts"
-
-        echo "=== Keen-One Astronomy Stack - Portainer Bootstrap ==="
-        echo "Downloading scripts from: $${BASE_URL}"
-
-        # Create script directories
-        mkdir -p /custom-cont-init.d /scripts
-
-        # Download init scripts
-        curl -fsSL "$${BASE_URL}/init/init-astronomy.sh" -o /custom-cont-init.d/init-astronomy.sh
-        curl -fsSL "$${BASE_URL}/init/discover-mount.sh" -o /custom-cont-init.d/discover-mount.sh
-        chmod +x /custom-cont-init.d/*.sh
-
-        # Download test scripts
-        curl -fsSL "$${BASE_URL}/test/self-test.sh" -o /scripts/self-test.sh
-        curl -fsSL "$${BASE_URL}/test/health-check.sh" -o /scripts/health-check.sh
-        chmod +x /scripts/*.sh
-
-        echo "Scripts downloaded successfully"
-
-        # Run the original entrypoint
-        exec /init
 
 volumes:
   astronomy-desktop-config:

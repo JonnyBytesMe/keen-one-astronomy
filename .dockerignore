@@ -1,0 +1,43 @@
+# ============================================================================
+# Docker Build Ignore File
+# ============================================================================
+# Files and directories to exclude from Docker build context
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# GitHub
+.github
+!.github/workflows
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Development files
+.env
+.env.*
+*.log
+*.bak
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Docker compose files (not needed in image)
+docker-compose*.yml
+
+# Test/example files
+examples/
+test/
+*.test.*
+
+# OS files
+.DS_Store
+Thumbs.db

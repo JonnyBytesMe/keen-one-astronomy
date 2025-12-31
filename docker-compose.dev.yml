@@ -1,0 +1,94 @@
+# ============================================================================
+# Keen-One Astronomy Stack - Development Edition
+# ============================================================================
+# Use this for local development when testing script changes
+# Mounts local scripts directory instead of using baked-in image scripts
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# ============================================================================
+
+services:
+  indiserver:
+    image: silfreed/indilib:latest
+    container_name: indiserver
+    restart: unless-stopped
+    ports:
+      - "7624:7624"
+    environment:
+      - TZ=${TIMEZONE:-Europe/London}
+    volumes:
+      - indi-config:/root/.indi
+    command: ["-v", "indi_lx200_OnStep"]
+    healthcheck:
+      test: ["CMD-SHELL", "echo '<getProperties version=\"1.7\"/>' | timeout 5 cat > /dev/tcp/localhost/7624 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - astronomy
+
+  astronomy-desktop:
+    # Use base webtop for dev (faster to test script changes)
+    image: linuxserver/webtop:ubuntu-kde
+    container_name: astronomy-desktop
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-Europe/London}
+      - SUBFOLDER=/
+      - TITLE=Astronomy Desktop (DEV)
+      # Install packages on startup (slower but allows testing)
+      - DOCKER_MODS=linuxserver/mods:universal-package-install
+      - INSTALL_PACKAGES=kstars stellarium indi-bin netcat-openbsd bc astap unzip curl
+      # Astronomy config
+      - LOG_LEVEL=${LOG_LEVEL:-3}
+      - INDI_HOST=${INDI_HOST:-indiserver}
+      - INDI_PORT=${INDI_PORT:-7624}
+      - MOUNT_IP=${MOUNT_IP:-}
+      - MOUNT_PORT=${MOUNT_PORT:-9999}
+      - MOUNT_DRIVER=${MOUNT_DRIVER:-LX200 OnStep}
+      - USE_GPS_LOCATION=${USE_GPS_LOCATION:-true}
+      - LATITUDE=${LATITUDE:-}
+      - LONGITUDE=${LONGITUDE:-}
+      - ELEVATION=${ELEVATION:-}
+      - SELF_TEST_ON_BOOT=${SELF_TEST_ON_BOOT:-true}
+      # Multi-client sharing
+      - SELKIES_ENABLE_SHARING=true
+      - SELKIES_ENABLE_COLLAB=true
+    volumes:
+      - astronomy-desktop-config:/config
+      # Mount LOCAL scripts for development
+      - ./scripts/init:/custom-cont-init.d:ro
+      - ./scripts/test:/scripts:ro
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "bash", "/scripts/health-check.sh"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 180s
+    depends_on:
+      indiserver:
+        condition: service_healthy
+    networks:
+      - astronomy
+
+volumes:
+  astronomy-desktop-config:
+    name: astronomy-desktop-config-dev
+  indi-config:
+    name: astronomy-indi-config-dev
+
+networks:
+  astronomy:
+    name: astronomy-dev
+    driver: bridge

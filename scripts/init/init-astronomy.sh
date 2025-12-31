@@ -164,44 +164,89 @@ log_debug "Stellarium directory: $STELLARIUM_DIR"
 mkdir -p "${STELLARIUM_MODULES}"
 
 # Main config - enable TelescopeControl plugin
-if [ ! -f "${STELLARIUM_DIR}/config.ini" ] || ! grep -q "TelescopeControl" "${STELLARIUM_DIR}/config.ini" 2>/dev/null; then
-    log_debug "Adding TelescopeControl to Stellarium config.ini"
-    cat >> "${STELLARIUM_DIR}/config.ini" << 'EOF'
-
-[plugins]
+# Stellarium 24.x uses [plugins_load_at_startup] section
+if [ ! -f "${STELLARIUM_DIR}/config.ini" ]; then
+    log_debug "Creating Stellarium config.ini with TelescopeControl enabled"
+    cat > "${STELLARIUM_DIR}/config.ini" << 'EOF'
+[plugins_load_at_startup]
 TelescopeControl = true
-TelescopeControl_autoEnableAtStartup = false
 
 [TelescopeControl]
 flag_telescope_circles = true
 flag_telescope_labels = true
 flag_telescope_reticles = true
 use_telescope_server_logs = false
+use_executable_telescopes = false
+use_telescope_server = false
 EOF
+    log_info "Created Stellarium config with TelescopeControl enabled"
+elif ! grep -q "\[plugins_load_at_startup\]" "${STELLARIUM_DIR}/config.ini" 2>/dev/null; then
+    log_debug "Adding plugins_load_at_startup section to existing config.ini"
+    cat >> "${STELLARIUM_DIR}/config.ini" << 'EOF'
+
+[plugins_load_at_startup]
+TelescopeControl = true
+
+[TelescopeControl]
+flag_telescope_circles = true
+flag_telescope_labels = true
+flag_telescope_reticles = true
+use_telescope_server_logs = false
+use_executable_telescopes = false
+use_telescope_server = false
+EOF
+    log_info "Added TelescopeControl to existing config"
+elif ! grep -q "TelescopeControl = true" "${STELLARIUM_DIR}/config.ini" 2>/dev/null; then
+    log_debug "Enabling TelescopeControl plugin in config.ini"
+    sed -i 's/\[plugins_load_at_startup\]/[plugins_load_at_startup]\nTelescopeControl = true/' "${STELLARIUM_DIR}/config.ini"
     log_info "Enabled TelescopeControl plugin"
 else
     log_debug "TelescopeControl already configured in config.ini"
 fi
 
-# Telescope configuration for INDI (JSON format for Stellarium 24.4+)
-log_debug "Creating telescopes.json with INDI connection"
-cat > "${STELLARIUM_MODULES}/telescopes.json" << EOF
+# Telescope configuration for Stellarium TelescopeControl plugin
+# Note: Stellarium uses LX200 protocol over TCP, not INDI protocol
+# Connect directly to mount if MOUNT_IP is set, otherwise show instructions
+log_debug "Creating telescopes.json for Stellarium"
+
+if [ -n "$MOUNT_IP" ]; then
+    # Direct connection to mount using LX200 protocol
+    cat > "${STELLARIUM_MODULES}/telescopes.json" << EOF
 {
     "version": "0.4.1",
     "1": {
         "name": "Keen-One EQ Mount",
-        "connection": "INDI",
+        "connection": "external",
         "equinox": "JNow",
-        "host_name": "${INDI_HOST}",
-        "tcp_port": ${INDI_PORT},
-        "device_model": "${MOUNT_DRIVER}",
+        "host_name": "${MOUNT_IP}",
+        "tcp_port": ${MOUNT_PORT},
         "delay": 500000,
-        "connect_at_startup": true,
+        "connect_at_startup": false,
+        "circles": [0.5, 1.0, 2.0]
+    }
+}
+EOF
+    log_info "Created Stellarium telescope config (LX200: ${MOUNT_IP}:${MOUNT_PORT})"
+else
+    # No mount IP - create placeholder config
+    cat > "${STELLARIUM_MODULES}/telescopes.json" << EOF
+{
+    "version": "0.4.1",
+    "1": {
+        "name": "Configure in Stellarium",
+        "connection": "external",
+        "equinox": "JNow",
+        "host_name": "localhost",
+        "tcp_port": 10001,
+        "delay": 500000,
+        "connect_at_startup": false,
         "circles": [0.5, 1.0]
     }
 }
 EOF
-log_info "Created Stellarium telescope config (INDI: ${INDI_HOST}:${INDI_PORT})"
+    log_warn "MOUNT_IP not set - Stellarium telescope requires manual configuration"
+    log_info "Use KStars/Ekos for telescope control via INDI, or configure Stellarium manually"
+fi
 
 chown -R abc:abc "${STELLARIUM_DIR}" 2>/dev/null || true
 
@@ -273,6 +318,53 @@ log_info "Set KStars location: Lat=$LATITUDE, Long=$LONGITUDE, Elev=$ELEVATION"
 
 chown -R abc:abc "${KSTARS_DIR}" 2>/dev/null || true
 chown -R abc:abc "$(dirname ${KSTARS_CONFIG})" 2>/dev/null || true
+
+# ============================================================================
+# ASTAP Plate Solving Setup
+# ============================================================================
+# D50 star database enables fast offline plate solving (~2-8 second solves)
+#
+# Pre-built image: Catalog is at /usr/share/astap/data (baked into image)
+# Dev mode: Download to user config dir if not present
+#
+ASTAP_SYSTEM_DATA="/usr/share/astap/data"
+ASTAP_USER_DATA="${USER_HOME}/.local/share/astap"
+ASTAP_D50_MARKER="${ASTAP_USER_DATA}/.d50_installed"
+
+if command -v astap &> /dev/null; then
+    # Check if D50 is already installed (system or user location)
+    if [ -d "$ASTAP_SYSTEM_DATA" ] && ls "$ASTAP_SYSTEM_DATA"/*.1476 &>/dev/null 2>&1; then
+        log_info "ASTAP D50 database found (system location)"
+        log_debug "Plate solving ready: 2-8 second solves for most fields"
+    elif [ -f "$ASTAP_D50_MARKER" ]; then
+        log_debug "ASTAP D50 database already installed (user location)"
+    else
+        # Dev mode - download catalog
+        log_info "ASTAP found - downloading D50 star database (this may take a few minutes)..."
+        mkdir -p "${ASTAP_USER_DATA}"
+
+        D50_URL="https://downloads.sourceforge.net/project/astap-program/star_databases/d50_star_database.zip"
+        D50_ZIP="/tmp/d50_star_database.zip"
+
+        if curl -fsSL --connect-timeout 30 --max-time 600 -o "$D50_ZIP" "$D50_URL" 2>/dev/null; then
+            log_info "Download complete, extracting..."
+            if unzip -q -o "$D50_ZIP" -d "${ASTAP_USER_DATA}/" 2>/dev/null; then
+                touch "$ASTAP_D50_MARKER"
+                rm -f "$D50_ZIP"
+                log_info "ASTAP D50 star database installed successfully"
+            else
+                log_warn "Failed to extract D50 database - plate solving may be slower"
+                rm -f "$D50_ZIP"
+            fi
+        else
+            log_warn "Failed to download D50 database - plate solving will use online solver"
+        fi
+    fi
+
+    chown -R abc:abc "${ASTAP_USER_DATA}" 2>/dev/null || true
+else
+    log_debug "ASTAP not installed - skipping star database setup"
+fi
 
 # ============================================================================
 # Desktop Shortcuts
